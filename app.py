@@ -13,7 +13,19 @@ load_dotenv()
 app = Flask(__name__, 
            template_folder='templates',
            static_folder='static')
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+
+# OpenAI 클라이언트 지연 초기화 (Worker 부트 크래시 방지 - Railway 등)
+_client = None
+
+def get_openai_client():
+    """필요할 때만 OpenAI 클라이언트 생성 (모듈 로드 시 크래시 방지)"""
+    global _client
+    if _client is None:
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            raise ValueError('OPENAI_API_KEY 환경 변수가 설정되지 않았습니다.')
+        _client = OpenAI(api_key=api_key)
+    return _client
 
 def extract_product_id(url_or_name):
     """상품 URL에서 product ID 추출 또는 검색"""
@@ -352,6 +364,7 @@ def crawl_amazon_reviews(product_id, max_reviews=10):
 def analyze_sentiment_with_gpt(review_text):
     """GPT API를 사용한 감정 분석"""
     try:
+        client = get_openai_client()
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
@@ -376,6 +389,7 @@ def analyze_sentiment_with_gpt(review_text):
 def generate_summary_report(reviews_with_sentiment):
     """GPT를 사용하여 전반적인 상품 인상 요약"""
     try:
+        client = get_openai_client()
         positive_reviews = [r['text'] for r in reviews_with_sentiment if r['sentiment'] == 'positive']
         negative_reviews = [r['text'] for r in reviews_with_sentiment if r['sentiment'] == 'negative']
         
@@ -441,6 +455,10 @@ def analyze_reviews():
     if not product_id:
         return jsonify({'error': '상품 ID가 필요합니다.'}), 400
     
+    # API 키 확인 (지연 초기화이므로 여기서 검증)
+    if not os.getenv('OPENAI_API_KEY'):
+        return jsonify({'error': 'OPENAI_API_KEY 환경 변수가 설정되지 않았습니다. Railway Variables에서 설정해주세요.'}), 500
+    
     # 리뷰 크롤링 (10개로 제한)
     print(f"Crawling reviews for product {product_id}...")
     reviews = crawl_amazon_reviews(product_id, max_reviews=10)
@@ -448,7 +466,13 @@ def analyze_reviews():
     if not reviews:
         return jsonify({'error': '리뷰를 찾을 수 없습니다.'}), 404
     
-    # 감정 분석
+    # 감정 분석 (OpenAI 클라이언트 초기화 오류 시 처리)
+    try:
+        get_openai_client()  # 부트 시점이 아닌 요청 시점에 초기화
+    except Exception as e:
+        print(f"OpenAI client init error: {str(e)}")
+        return jsonify({'error': f'OpenAI API 연결 실패: {str(e)}'}), 500
+    
     print("Analyzing sentiments...")
     reviews_with_sentiment = []
     for review in reviews:
