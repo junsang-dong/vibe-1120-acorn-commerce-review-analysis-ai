@@ -2,6 +2,10 @@
 
 아마존 상품 리뷰를 자동으로 수집하고 GPT API를 활용하여 감정을 분석하는 웹 애플리케이션입니다.
 
+## 🎬 라이브 데모
+
+**[https://web-production-6427d.up.railway.app/](https://web-production-6427d.up.railway.app/)** ← 바로 체험해보기
+
 ## ✨ 주요 기능
 
 - 🔍 **리뷰 크롤링**: BeautifulSoup을 사용하여 아마존 상품 리뷰 최신순 30개 자동 수집
